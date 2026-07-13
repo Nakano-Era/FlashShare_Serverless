@@ -1,6 +1,6 @@
-# ⚡ FlashShare - Cloudflare Serverless 部署指南
+# ⚡ FlashShare - Cloudflare Serverless (Worker) 部署指南
 
-本目錄 (`/CF-Version`) 是 FlashShare 的 **完全無 VPS (Serverless) 版本**。它利用 **Cloudflare Pages** 託管靜態前端，**Cloudflare Workers** 處理所有 API 路由，**Cloudflare KV** 作為資料庫（快取 Session、使用者與分享資訊），以及 **Cloudflare R2** 儲存上傳的檔案。
+本目錄 (`/CF-Version`) 是 FlashShare 的 **完全免 VPS (Serverless) 版本**。它利用 **Cloudflare Workers** 託管核心 API 路由並提供靜態資源服務，**Cloudflare KV** 作為無伺服器資料庫，以及 **Cloudflare R2** 儲存上傳的檔案。
 
 此版本具備極高的高可用性、防 DDoS 能力，並且在 Cloudflare 免費額度內**完全免費**。
 
@@ -8,7 +8,7 @@
 
 ## 🛠️ 部署前準備 (Windows 與通用環境)
 
-### 1. 安裝 Node.js (Windows 使用者)
+### 1. 安裝 Node.js
 如果您尚未安裝 Node.js：
 1. 請前往 [Node.js 官方網站](https://nodejs.org/) 下載並安裝 **LTS 穩定版本** (推薦 `.msi` 安裝包)。
 2. 安裝時，請勾選 "Automatically install the necessary tools..."（這會自動設定環境變數 PATH）。
@@ -33,7 +33,7 @@ npx wrangler login
 ```
 *提示：如果瀏覽器沒有自動打開，可以複製終端機中輸出的網址手動粘貼至瀏覽器訪問。*
 
-### 2. 建立 KV 命名空間 (用於資料庫)
+### 4. 建立 KV 命名空間 (用於資料庫)
 建立一個名為 `DB` 的 KV 命名空間：
 ```bash
 npx wrangler kv namespace create DB
@@ -46,11 +46,12 @@ id = "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
 ```
 請複製此 `id` 欄位的值。
 
-### 3. 建立 R2 儲存桶 (用於檔案儲存)
-建立一個名為 `flashshare-storage` 的 R2 儲存桶：
-```bash
-npx wrangler r2 bucket create flashshare-storage
-```
+### 5. 啟用與建立 R2 儲存桶 (用於檔案儲存)
+1. 登入 [Cloudflare 控制台](https://dash.cloudflare.com/) ➔ 點擊左側選單的 **「R2」** ➔ 點擊 **「啟用 R2 (Enable R2)」** 並綁定您的付款方式（10GB 內完全免費，不會扣款）。
+2. 在您的本機終端機中建立儲存桶：
+   ```bash
+   npx wrangler r2 bucket create flashshare-storage
+   ```
 
 ---
 
@@ -60,8 +61,12 @@ npx wrangler r2 bucket create flashshare-storage
 
 ```toml
 name = "flashshare"
+main = "index.js"
 compatibility_date = "2024-03-01"
-pages_build_output_dir = "./public"
+
+[assets]
+directory = "./public"
+binding = "ASSETS"
 
 [[kv_namespaces]]
 binding = "DB"
@@ -70,23 +75,25 @@ id = "在此處填入您產生的 KV Namespace ID"
 [[r2_buckets]]
 binding = "STORAGE"
 bucket_name = "flashshare-storage" # 若您使用了不同的儲存桶名稱請在此修改
+
+[triggers]
+crons = ["*/30 * * * *"] # 每 30 分鐘自動執行一次過期清理
 ```
 
 ---
 
-## 🚀 一鍵部署至 Cloudflare Pages
+## 🚀 一鍵部署至 Cloudflare Workers
 
 切換到 `CF-Version` 目錄下並執行部署：
 ```bash
 # 進入目錄
 cd CF-Version
 
-# 部署至 Pages
-npx wrangler pages deploy ./public --project-name flashshare
+# 部署服務與靜態資源
+npx wrangler deploy
 ```
-1. 終端機會詢問是否建立新專案，選擇 `Yes`。
-2. 詢問生產環境分支名稱，直接按 Enter 鍵使用預設的 `production`。
-3. 部署完成後，Wrangler 會提供您一個免費的專案網址（例如：`https://flashshare.pages.dev`）。
+*   **注意**：請確保執行的是 `npx wrangler deploy`，**不要**包含 `pages` 參數。這會將專案作為標準 Worker 部署，並**一併自動將定時清理排程上傳註冊**，您無須在控制台手動設定任何內容！
+*   部署完成後，Wrangler 會提供您一個免費的專案網址（例如：`https://flashshare.<您的子網域>.workers.dev`）。
 
 ---
 
@@ -109,8 +116,8 @@ npx wrangler pages deploy ./public --project-name flashshare
    - 當任何人訪問已經過期的提取連結、或者嘗試進行下載時，後端 Worker 在讀取該分享項目時會主動判定是否過期。
    - **如果過期**：Worker 將立刻向 Cloudflare R2 發送指令刪除實體檔案，並同時移除該項目在 KV 中的元數據。這保證了過期檔案「一經點擊即物理蒸發」。
 2. **背景排程清理 (Cron Trigger)**：
-   - 為了清理那些過期後無人訪問的垃圾檔案，本專案在 `_worker.js` 中實現了 `scheduled` 監聽器。
-   - 您需要前往 **Cloudflare Dashboard ➔ 您的 Pages 專案 ➔ Settings ➔ Functions ➔ Cron Triggers** 新增一個定時觸發器（例如填入 `*/30 * * * *`），每 30 分鐘背景便會自動掃描並物理清空所有殘留的過期檔案。
+   - 為了清理那些過期後無人訪問的垃圾檔案，本專案在 `index.js` 中實現了 `scheduled` 監聽器。
+   - 此排程已由 `wrangler.toml` 中的 `[triggers.crons]` 自動註冊，它會每 30 分鐘自動在雲端執行！
 3. **長期儲存防誤刪保護**：
    - 對於註冊會員所建立的「永久儲存」檔案，其資料庫中的過期時間戳記會被記錄為 `null`。
    - 所有的自動清理邏輯（主動與排程）均包含 `share.expiresAt !== null` 斷言判斷，因此**絕對不會誤刪永久儲存檔案**。永久檔案僅能由上傳者手動點擊「銷毀」時才會被物理抹除。
@@ -120,8 +127,8 @@ npx wrangler pages deploy ./public --project-name flashshare
 ## 📁 檔案結構說明
 
 - `wrangler.toml`：Cloudflare 部署與綁定設定檔。
-- `public/`：靜態網站根目錄。
-  - `_worker.js`：核心 API 路由、R2 串流與 KV 資料庫存取邏輯。
+- `index.js`：核心 Worker API 路由、R2 串流與 KV 資料庫存取邏輯（置於根目錄）。
+- `public/`：靜態資源目錄。
   - `index.html`：多語系前端主頁面。
   - `style.css`：前端樣式與毛玻璃特效。
   - `app.js`：前端互動邏輯（與 API 進行溝通）。
