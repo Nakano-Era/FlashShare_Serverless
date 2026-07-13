@@ -780,10 +780,10 @@ export default {
     // 自動初始化管理員帳號 (Seeding)
     await checkAndSeedAdmin(env);
 
-    // 1. 處理直接提取路徑 /s/:code
+    // 1. 處理直接提取路徑 /s/
     if (pathname.startsWith('/s/')) {
-      // 重寫路由，引導前端讀取 index.html 的 SPA 邏輯
-      return env.ASSETS.fetch(new Request(url.origin + '/index.html', request));
+      // 重寫路由，引導前端讀取首頁的 SPA 邏輯 (使用 '/' 避免被 Cloudflare Pages 308 重定向到首頁)
+      return env.ASSETS.fetch(new Request(url.origin + '/', request));
     }
 
     // 2. 處理 API 請求
