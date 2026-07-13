@@ -6,15 +6,32 @@
 
 ---
 
-## 🛠️ 部署前準備
+## 🛠️ 部署前準備 (Windows 與通用環境)
 
-請確保您已安裝 Node.js，並擁有一個 Cloudflare 帳號。
+### 1. 安裝 Node.js (Windows 使用者)
+如果您尚未安裝 Node.js：
+1. 請前往 [Node.js 官方網站](https://nodejs.org/) 下載並安裝 **LTS 穩定版本** (推薦 `.msi` 安裝包)。
+2. 安裝時，請勾選 "Automatically install the necessary tools..."（這會自動設定環境變數 PATH）。
+3. 安裝完成後，請**重啟您的終端機**（命令提示字元 Cmd 或 PowerShell）。
+4. 驗證安裝成功：
+   ```bash
+   node -v
+   npm -v
+   ```
 
-### 1. 登入 Cloudflare
-在本機終端機中執行登入指令，瀏覽器會彈出視窗授權：
+### 2. Windows 終端機權限設定 (僅 PowerShell 使用者)
+如果您在 Windows 上使用 **PowerShell**，執行 `npx wrangler` 可能會因為安全策略而受阻。
+請先在 PowerShell 中執行以下指令以臨時允許執行指令碼（僅對當前視窗有效，安全無害）：
+```powershell
+Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope Process
+```
+
+### 3. 登入 Cloudflare
+在終端機中執行登入指令，系統會自動在瀏覽器彈出登入與授權視窗：
 ```bash
 npx wrangler login
 ```
+*提示：如果瀏覽器沒有自動打開，可以複製終端機中輸出的網址手動粘貼至瀏覽器訪問。*
 
 ### 2. 建立 KV 命名空間 (用於資料庫)
 建立一個名為 `DB` 的 KV 命名空間：
