@@ -36,7 +36,7 @@ npx wrangler login
 ### 2. 建立 KV 命名空間 (用於資料庫)
 建立一個名為 `DB` 的 KV 命名空間：
 ```bash
-npx wrangler kv:namespace create DB
+npx wrangler kv namespace create DB
 ```
 執行後，終端機將會輸出類似以下的內容：
 ```toml
