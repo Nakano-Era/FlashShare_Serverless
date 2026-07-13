@@ -1494,8 +1494,8 @@ document.addEventListener('DOMContentLoaded', () => {
       });
     }
 
-    // 解析 URL 一鍵提取路由 (支援英數字、36位UUID以及選填密碼)
-    const pathMatch = window.location.pathname.match(/^\/s\/([a-zA-Z0-9-]{6,36})(?:\/([a-zA-Z0-9]{4}))?$/);
+    // 解析 URL 一鍵提取路由 (支援英數字、36位UUID以及選填密碼，支援選填結尾斜線)
+    const pathMatch = window.location.pathname.match(/^\/s\/([a-zA-Z0-9-]{6,36})(?:\/([a-zA-Z0-9]{4}))?\/?$/);
     if (pathMatch) {
       const code = pathMatch[1].toLowerCase();
       const password = pathMatch[2] ? pathMatch[2] : '';

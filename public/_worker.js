@@ -609,8 +609,7 @@ async function handleApi(request, env) {
           type: 'file',
           filename: share.filename,
           fileSize: share.fileSize,
-          code: share.code,
-          password: share.password
+          downloadUrl: `/api/share/download/${share.code}${share.password ? '?pwd=' + share.password : ''}`
         });
       }
     } catch (e) {
