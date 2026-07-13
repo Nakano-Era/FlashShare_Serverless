@@ -9,7 +9,3 @@ id = "DB_KV_NAMESPACE_ID" # 請在部署時替換為您的 KV Namespace ID
 [[r2_buckets]]
 binding = "STORAGE"
 bucket_name = "flashshare-storage" # 請在部署時替換為您的 R2 Bucket 名稱
-
-[triggers]
-crons = ["*/30 * * * *"] # 每 30 分鐘自動執行一次過期清理
-
