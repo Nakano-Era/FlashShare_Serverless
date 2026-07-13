@@ -1,0 +1,11 @@
+name = "flashshare"
+compatibility_date = "2024-03-01"
+pages_build_output_dir = "./public"
+
+[[kv_namespaces]]
+binding = "DB"
+id = "DB_KV_NAMESPACE_ID" # 請在部署時替換為您的 KV Namespace ID
+
+[[r2_buckets]]
+binding = "STORAGE"
+bucket_name = "flashshare-storage" # 請在部署時替換為您的 R2 Bucket 名稱
