@@ -543,64 +543,76 @@ async function handleApi(request, env) {
     }
   }
 
-  // 5. 獲取分享基本資訊 (排除隱私欄位)
-  if (pathname.startsWith('/api/share/info/')) {
-    const code = pathname.substring(16).toLowerCase();
-    const share = await db.getShareInfo(env, code);
-    if (!share) {
-      return jsonResponse({ success: false, error: '密碼或提取碼有誤或文件過期' }, 404);
-    }
-
-    // 若設定「限同帳號下載」，且目前未登入或登入 ID 不符，直接封鎖
-    if (share.sameAccountOnly) {
-      if (!authUser || authUser.userId !== share.userId) {
-        return jsonResponse({ success: false, error: '密碼或提取碼有誤或文件過期' }, 403);
-      }
-    }
-
-    const hasPassword = share.password !== null;
-    return jsonResponse({
-      success: true,
-      type: share.type,
-      filename: share.filename,
-      fileSize: share.fileSize,
-      hasPassword,
-      sameAccountOnly: share.sameAccountOnly
-    });
-  }
-
-  // 6. 驗證提取碼與密碼
-  if (pathname.startsWith('/api/share/verify/')) {
-    const code = pathname.substring(18).toLowerCase();
+  // 5. 獲取分享基本資訊 (支援同帳號權限校驗與防爆破統一報錯)
+  if (pathname === '/api/retrieve/info' && method === 'POST') {
     try {
-      const { password } = await request.json();
-      const share = await db.getShareInfo(env, code);
-      if (!share) {
-        return jsonResponse({ success: false, error: '密碼或提取碼有誤或文件過期' }, 404);
+      const { code } = await request.json();
+      const unifiedError = '密碼或提取碼有誤或文件過期';
+      if (!code || typeof code !== 'string') {
+        return jsonResponse({ success: false, error: unifiedError }, 400);
       }
 
+      const share = await db.getShareInfo(env, code.trim().toLowerCase());
+      if (!share) {
+        return jsonResponse({ success: false, error: unifiedError }, 404);
+      }
+
+      // 限同帳號下載校驗
       if (share.sameAccountOnly) {
         if (!authUser || authUser.userId !== share.userId) {
-          return jsonResponse({ success: false, error: '密碼或提取碼有誤或文件過期' }, 403);
+          return jsonResponse({ success: false, error: unifiedError }, 403);
         }
       }
 
-      // 如果有密碼，校驗密碼（大小寫不敏感）
+      return jsonResponse({ success: true, share });
+    } catch (e) {
+      return jsonResponse({ success: false, error: e.message }, 500);
+    }
+  }
+
+  // 6. 驗證密碼並提取內容 (支援限同帳號下載與防爆破統一報錯)
+  if (pathname === '/api/retrieve/data' && method === 'POST') {
+    try {
+      const { code, password } = await request.json();
+      const unifiedError = '密碼或提取碼有誤或文件過期';
+      if (!code) {
+        return jsonResponse({ success: false, error: unifiedError }, 400);
+      }
+
+      const share = await db.getShareInfo(env, code.trim().toLowerCase());
+      if (!share) {
+        return jsonResponse({ success: false, error: unifiedError }, 404);
+      }
+
+      // 限同帳號下載校驗
+      if (share.sameAccountOnly) {
+        if (!authUser || authUser.userId !== share.userId) {
+          return jsonResponse({ success: false, error: unifiedError }, 403);
+        }
+      }
+
+      // 密碼比對 (大小寫不敏感)
       if (share.password !== null) {
         const inputPwd = (password || '').trim().toLowerCase();
         const correctPwd = share.password.toLowerCase();
         if (inputPwd !== correctPwd) {
-          return jsonResponse({ success: false, error: '密碼或提取碼有誤或文件過期' }, 400);
+          return jsonResponse({ success: false, error: unifiedError }, 403);
         }
       }
 
-      return jsonResponse({
-        success: true,
-        type: share.type,
-        payload: share.type === 'text' ? share.payload : undefined,
-        filename: share.filename,
-        fileSize: share.fileSize
-      });
+      // 提取成功
+      if (share.type === 'text') {
+        return jsonResponse({ success: true, type: 'text', text: share.payload });
+      } else {
+        return jsonResponse({
+          success: true,
+          type: 'file',
+          filename: share.filename,
+          fileSize: share.fileSize,
+          code: share.code,
+          password: share.password
+        });
+      }
     } catch (e) {
       return jsonResponse({ success: false, error: e.message }, 500);
     }
