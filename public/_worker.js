@@ -220,7 +220,21 @@ const db = {
   async getShareInfo(env, code) {
     const recordStr = await env.DB.get(`share:${code.toLowerCase()}`);
     if (!recordStr) return null;
-    return JSON.parse(recordStr);
+    const share = JSON.parse(recordStr);
+
+    // 檢查是否已過期，若過期則執行物理銷毀 (刪除 R2 檔案與 KV 元數據)
+    if (share.expiresAt !== null && Date.now() > share.expiresAt) {
+      if (share.type === 'file' && share.payload) {
+        try {
+          await env.STORAGE.delete(share.payload);
+        } catch (err) {
+          console.error('Failed to delete expired R2 object on access:', err);
+        }
+      }
+      await env.DB.delete(`share:${code.toLowerCase()}`);
+      return null;
+    }
+    return share;
   },
 
   async deleteShare(env, code) {
@@ -771,6 +785,33 @@ async function getAuthenticatedUser(request, env) {
   return await db.getSession(env, token);
 }
 
+// 獨立的定期清理函數 (用於 Cron 觸發)
+async function cleanupExpiredShares(env) {
+  const list = await env.DB.list({ prefix: 'share:' });
+  const now = Date.now();
+  let sharesCleaned = 0;
+  for (const key of list.keys) {
+    const shareStr = await env.DB.get(key.name);
+    if (shareStr) {
+      const share = JSON.parse(shareStr);
+      if (share.expiresAt !== null && now > share.expiresAt) {
+        if (share.type === 'file' && share.payload) {
+          try {
+            await env.STORAGE.delete(share.payload);
+          } catch (err) {
+            console.error('[Cron] Failed to delete expired R2 object:', err);
+          }
+        }
+        await env.DB.delete(key.name);
+        sharesCleaned++;
+      }
+    }
+  }
+  if (sharesCleaned > 0) {
+    console.log(`[Cron Cleanup] Automatically destroyed ${sharesCleaned} expired share(s).`);
+  }
+}
+
 // Cloudflare Pages Worker 進入點
 export default {
   async fetch(request, env) {
@@ -793,5 +834,10 @@ export default {
 
     // 3. 處理其他靜態檔案 (style.css, app.js, i18n.js 等)
     return env.ASSETS.fetch(request);
+  },
+
+  // 支援 Scheduled Cron Trigger 排程任務
+  async scheduled(event, env, ctx) {
+    ctx.waitUntil(cleanupExpiredShares(env));
   }
 };
